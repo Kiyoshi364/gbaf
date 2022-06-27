@@ -217,6 +217,7 @@ fn FieldTypeFromFmt(fmt: []const u8) type {
                 .alignment = @alignOf(field_type),
             };
         }
+        assert( total_size == 16 or total_size == 32 );
     }
     return @Type(Type{ .Struct = .{
         .layout = .Auto,
@@ -227,7 +228,7 @@ fn FieldTypeFromFmt(fmt: []const u8) type {
 }
 
 test "ThumbSpec compiles" {
-    @setEvalBranchQuota(2583);
+    @setEvalBranchQuota(2606);
     _ = MakeInst(ThumbSpec);
 }
 
