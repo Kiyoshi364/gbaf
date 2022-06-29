@@ -6,7 +6,10 @@ const Arm = MakeInst(ArmSpec);
 
 const ArmSpec = &[_]Spec{};
 
-const Thumb = MakeInst(ThumbSpec);
+const Thumb = blk: {
+    @setEvalBranchQuota(3000);
+    break :blk MakeInst(ThumbSpec);
+};
 
 const ThumbSpec = &[_]Spec{
 .{ .fmt = "000..iii iimmmddd", .name = "ShiftByImmediate", },
@@ -39,7 +42,7 @@ const Spec = struct { fmt: []const u8, name: []const u8, };
 fn MakeInst(comptime specs: []const Spec) type {
     var fields: [specs.len]Type.UnionField = undefined;
     for (specs) |spec, i| {
-        const field_type = FieldTypeFromFmt(spec.fmt);
+        const field_type = FieldTypeFromFmt(spec);
         fields[i] = .{
             .name = spec.name,
             .field_type = field_type,
@@ -48,9 +51,30 @@ fn MakeInst(comptime specs: []const Spec) type {
     }
     return @Type(Type{ .Union = .{
         .layout = .Auto,
-        .tag_type = null,
+        .tag_type = EnumFromUnionFields(&fields),
         .fields = &fields,
         .decls = &.{},
+    }});
+}
+
+fn EnumFromUnionFields(comptime fields: []const Type.UnionField) type {
+    var efields: [fields.len]Type.EnumField = undefined;
+    for (fields) |field, i| {
+        efields[i] = .{
+            .name = field.name,
+            .value = i,
+        };
+    }
+    const bits = 8;
+    return @Type(.{ .Enum = .{
+        .layout = .Auto,
+        .tag_type = @Type(.{ .Int = .{
+            .signedness = .unsigned,
+            .bits = bits,
+        }}),
+        .fields = &efields,
+        .decls = &.{},
+        .is_exhaustive = true,
     }});
 }
 
@@ -153,7 +177,8 @@ const MiniField = struct {
     };
 };
 
-fn FieldTypeFromFmt(fmt: []const u8) type {
+fn FieldTypeFromFmt(spec: Spec) type {
+    const fmt = spec.fmt;
     var buffer: [fmt.len]MiniField = undefined;
     var bsize = 0;
     {
@@ -221,14 +246,33 @@ fn FieldTypeFromFmt(fmt: []const u8) type {
     }
     return @Type(Type{ .Struct = .{
         .layout = .Auto,
-        .fields = &fields,
+        .fields = fields ++ makeInstLib(spec),
         .decls = &.{},
         .is_tuple = false,
     }});
 }
 
+fn makeInstLib(comptime spec: Spec) []Type.StructField {
+    const make = struct{
+        fn f(thing: anytype, name: []const u8) Type.StructField
+        { return .{
+            .name = name,
+            .field_type = @TypeOf(thing),
+            .default_value = &thing,
+            .is_comptime = true,
+            .alignment = @alignOf(@TypeOf(thing)),
+        };}
+    }.f;
+    const info = @typeInfo(Spec).Struct;
+    var buff: [info.fields.len]Type.StructField = undefined;
+    for (info.fields) |field, i| {
+        buff[i] = make(@field(spec, field.name), field.name);
+    }
+    return &buff;
+}
+
 test "ThumbSpec compiles" {
-    @setEvalBranchQuota(2606);
+    @setEvalBranchQuota(2745);
     _ = MakeInst(ThumbSpec);
 }
 
