@@ -11,6 +11,20 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
+    const asmgen_exe = b.addExecutable("asmgen", "src/asm_gen.zig");
+    asmgen_exe.setTarget(target);
+    asmgen_exe.setBuildMode(mode);
+    asmgen_exe.install();
+
+    const gen_cmd = asmgen_exe.run();
+    gen_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        gen_cmd.addArgs(args);
+    }
+
+    const gen_step = b.step("gen", "Generate the asm.zig file");
+    gen_step.dependOn(&gen_cmd.step);
+
     const exe = b.addExecutable("gbh", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
@@ -25,7 +39,7 @@ pub fn build(b: *std.build.Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const exe_tests = b.addTest("src/asm.zig");
+    const exe_tests = b.addTest("src/main.zig");
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
 
