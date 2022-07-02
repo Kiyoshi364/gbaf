@@ -11,19 +11,32 @@ pub fn build(b: *std.build.Builder) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
-    const asmgen_exe = b.addExecutable("asmgen", "src/asm_gen.zig");
+    const asmgen_exe = b.addExecutable("asmgen", "asm_gen/asm_gen.zig");
     asmgen_exe.setTarget(target);
     asmgen_exe.setBuildMode(mode);
     asmgen_exe.install();
 
-    const gen_cmd = asmgen_exe.run();
-    gen_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        gen_cmd.addArgs(args);
-    }
+    const asmgen_cmd = asmgen_exe.run();
+    asmgen_cmd.step.dependOn(b.getInstallStep());
 
-    const gen_step = b.step("gen", "Generate the asm.zig file");
-    gen_step.dependOn(&gen_cmd.step);
+    const asmgen_step = b.step("gen", "Generate the asm.zig file");
+    asmgen_step.dependOn(&asmgen_cmd.step);
+
+    // Generated files
+    const arm_file_missing =
+        if ( std.fs.cwd().openFile("src/asm.zig", .{}) catch null )
+            |file| blk: { file.close(); break :blk false; }
+        else true;
+
+    const exe_asm_tests = b.addTest("src/asm.zig");
+    exe_asm_tests.setTarget(target);
+    exe_asm_tests.setBuildMode(mode);
+
+    const test_asm_step = b.step("test_asm", "Run unit tests");
+    if ( arm_file_missing ) {
+        test_asm_step.dependOn(asmgen_step);
+    }
+    test_asm_step.dependOn(&exe_asm_tests.step);
 
     const exe = b.addExecutable("gbh", "src/main.zig");
     exe.setTarget(target);
@@ -37,6 +50,9 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     const run_step = b.step("run", "Run the app");
+    if ( arm_file_missing ) {
+        test_asm_step.dependOn(asmgen_step);
+    }
     run_step.dependOn(&run_cmd.step);
 
     const exe_tests = b.addTest("src/main.zig");
@@ -44,5 +60,8 @@ pub fn build(b: *std.build.Builder) void {
     exe_tests.setBuildMode(mode);
 
     const test_step = b.step("test", "Run unit tests");
+    if ( arm_file_missing ) {
+        test_asm_step.dependOn(asmgen_step);
+    }
     test_step.dependOn(&exe_tests.step);
 }

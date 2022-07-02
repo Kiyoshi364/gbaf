@@ -3,7 +3,9 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
-const ArmSpec = &[_]Spec{};
+const ArmSpec = &[_]Spec{
+.{ .fmt = "0000J111 1111K000", .name = "DummyInstruction", },
+};
 
 const ThumbSpec = &[_]Spec{
 .{ .fmt = "000..iii iimmmddd", .name = "ShiftByImmediate", },
