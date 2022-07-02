@@ -60,13 +60,12 @@ const MSField = struct {
         };
     }
 
-    pub fn format(
+    pub fn print(
         self: MSField,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
+        depth: usize,
         writer: anytype,
     ) !void {
-        _ = fmt; _ = options;
+        _ = depth;
         if ( self.sufix ) |sufix| {
             try std.fmt.format(writer, "{s}{}: u{}",
                 .{ self.name(), sufix, self.size });
@@ -162,17 +161,18 @@ const MSField = struct {
 const MetaStruct = struct {
     fields: []const MSField,
 
-    pub fn format(
+    pub fn print(
         self: MetaStruct,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
+        depth: usize,
         writer: anytype,
     ) !void {
-        _ = fmt; _ = options;
-        try std.fmt.format(writer, "struct {{ ", .{});
+        try std.fmt.format(writer, "struct {{\n", .{});
         for (self.fields) |f| {
-            try std.fmt.format(writer, "{}, ", .{ f });
+            try indent(depth+1, writer);
+            try f.print(depth+1, writer);
+            try std.fmt.format(writer, ",\n", .{});
         }
+        try indent(depth, writer);
         try std.fmt.format(writer, "}}", .{});
     }
 
@@ -251,15 +251,15 @@ const MUField = struct {
         return .{ .name = name, .mstruct = mstruct, };
     }
 
-    pub fn format(
+    pub fn print(
         self: MUField,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
+        depth: usize,
         writer: anytype,
     ) !void {
-        _ = fmt; _ = options;
-        try std.fmt.format(writer, "{s}: {},",
-            .{ self.name, self.mstruct });
+        try indent(depth, writer);
+        try std.fmt.format(writer, "{s}: ", .{ self.name });
+        try self.mstruct.print(depth, writer);
+        try std.fmt.format(writer, ",\n", .{});
     }
 };
 
@@ -278,14 +278,21 @@ const MetaUnion = struct {
         writer: anytype,
     ) !void {
         _ = fmt; _ = options;
-        try std.fmt.format(writer, "const {s} = union(enum) {{\n",
+        try std.fmt.format(writer, "pub const {s} = union(enum) {{\n",
             .{ self.name });
         for (self.fields) |f| {
-            try std.fmt.format(writer, "    {}\n", .{ f });
+            try f.print(1, writer);
         }
-        try std.fmt.format(writer, "}}\n", .{});
+        try std.fmt.format(writer, "}};\n", .{});
     }
 };
+
+fn indent(depth: usize, writer: anytype) !void {
+    var i = @as(usize, 0);
+    while ( i < depth ) : ( i += 1 ) {
+        try writer.print("    ", .{});
+    }
+}
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -299,7 +306,14 @@ pub fn main() !void {
     const thumb =
         MetaUnion.init("Thumb", try fieldsFromSpec(ThumbSpec, alloc));
 
-    try std.io.getStdOut().writer().print("{}", .{ thumb });
+    const arm =
+        MetaUnion.init("Arm", try fieldsFromSpec(ArmSpec, alloc));
+
+    const asmfile = try std.fs.cwd().createFile( "src/asm.zig", .{} );
+    defer asmfile.close();
+
+    try asmfile.writer().print("{}\n", .{ thumb });
+    try asmfile.writer().print("{}\n", .{ arm });
 }
 
 fn todo() noreturn {
