@@ -3,8 +3,10 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
+const tests = @embedFile("asm_tests.zig");
+
 const ArmSpec = &[_]Spec{
-.{ .fmt = "0000J111 1111K000", .name = "DummyInstruction", },
+.{ .fmt = "cccc000o oooSnnnn ddddaaaa ahh0mmmm", .name = "DataProcessingImmediateShift", },
 };
 
 const ThumbSpec = &[_]Spec{
@@ -316,6 +318,7 @@ pub fn main() !void {
 
     try asmfile.writer().print("{}\n", .{ thumb });
     try asmfile.writer().print("{}\n", .{ arm });
+    try asmfile.writer().print("{s}\n", .{ tests });
 }
 
 fn todo() noreturn {
