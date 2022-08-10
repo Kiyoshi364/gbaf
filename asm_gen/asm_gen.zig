@@ -7,6 +7,24 @@ const tests = @embedFile("asm_tests.zig");
 
 const ArmSpec = &[_]Spec{
 .{ .fmt = "cccc000o oooSnnnn ddddaaaa ahh0mmmm", .name = "DataProcessingImmediateShift", },
+.{ .fmt = "cccc0001 0xx0xxxx xxxxxxxx xxx0xxxx", .name = "MiscellaneousInstructions", },
+.{ .fmt = "cccc000o oooSnnnn ddddssss 0hhhmmmm", .name = "DataProcessingRegisterShift", },
+.{ .fmt = "cccc0001 0xx0xxxx xxxxxxxx 0xx1xxxx", .name = "MiscellaneousInstructions2", },
+.{ .fmt = "cccc000x xxxxxxxx xxxxxxxx 1xx1xxxx", .name = "MultipliesExtraLoadStores", },
+.{ .fmt = "cccc001o oooSnnnn ddddtttt iiiiiiii", .name = "DataProcessingImmediate", },
+.{ .fmt = "cccc0011 0x00xxxx xxxxxxxx xxxxxxxx", .name = "UndefinedInstruction", },
+.{ .fmt = "cccc0011 0R10kkkk SBOPtttt iiiiiiii", .name = "MoveImmediateToStatusRegister", },
+.{ .fmt = "cccc010P UBWLnnnn ddddiiii iiiiiiii", .name = "LoadStoreImmediateOffset", },
+.{ .fmt = "cccc011P UBWLnnnn ddddaaaa ahh0mmmm", .name = "LoadStoreRegisterOffset", },
+.{ .fmt = "cccc011x xxxxxxxx xxxxxxxx xxx1xxxx", .name = "MediaInstructions", },
+.{ .fmt = "cccc0111 1111xxxx xxxxxxxx 1111xxxx", .name = "ArchtecturallyUndefined", },
+.{ .fmt = "cccc100P USWLnnnn llllllll llllllll", .name = "LoadStoreMultiple", },
+.{ .fmt = "cccc101L ffffffff ffffffff ffffffff", .name = "BranchAndBranchWithLink", },
+.{ .fmt = "cccc110P UNWLnnnn ddddpppp ffffffff", .name = "CoprocessorLoadStoreAndDoubleRegisterTransfers", },
+.{ .fmt = "cccc1110 oooonnnn ddddpppp ....0mmm", .name = "CoprocessorDataProcessing", },
+.{ .fmt = "cccc1110 oooLnnnn ddddpppp ....1mmm", .name = "CoprocessorRegisterTransfers", },
+.{ .fmt = "cccc1111 iiiiiiii iiiiiiii iiiiiiii", .name = "SoftwareInterrupt", },
+.{ .fmt = "1111xxxx xxxxxxxx xxxxxxxx xxxxxxxx", .name = "UnconditionalInstructions", },
 };
 
 const ThumbSpec = &[_]Spec{
@@ -45,9 +63,11 @@ const MSField = struct {
     const Tag = union(enum) {
         fixed: u8, any, immediate,
         opcode1, opcode,
-        regm, regn, regd,
+        regm, regn, regd, regs,
         offset, reloffset,
         cond, reglist, sbz,
+        shiftamount, shift,
+        rotate, mask, cp_num,
         flag: struct { name: [1]u8 },
     };
 
@@ -57,9 +77,11 @@ const MSField = struct {
         return switch (self.tag) {
             .fixed, .any, .immediate,
             .opcode1, .opcode,
-            .regm, .regn, .regd,
+            .regm, .regn, .regd, .regs,
             .offset, .reloffset,
-            .cond, .reglist, .sbz, => @tagName(self.tag),
+            .cond, .reglist, .sbz,
+            .shiftamount, .shift,
+            .rotate, .mask, .cp_num => @tagName(self.tag),
             .flag => |flag| &flag.name,
         };
     }
@@ -102,12 +124,18 @@ const MSField = struct {
             'o' => .opcode,
             'm' => .regm,
             'n' => .regn,
+            's' => .regs,
             'd' => .regd,
             'f' => .offset,
             'r' => .reloffset,
             'c' => .cond,
             'l' => .reglist,
             'z' => .sbz,
+            'a' => .shiftamount,
+            'h' => .shift,
+            't' => .rotate,
+            'k' => .mask,
+            'p' => .cp_num,
             'A' ... 'Z' => .{ .flag = .{ .name = [1]u8{ char }, } },
             ' ' => return .empty,
             else => @panic("Unhandled char"),
@@ -135,10 +163,11 @@ const MSField = struct {
                 .fixed, => |b| .{ .fixed = b << 1 | old.tag.fixed, },
                 .any, .immediate,
                 .opcode1, .opcode,
-                .regm, .regn, .regd,
+                .regm, .regn, .regd, .regs,
                 .offset, .reloffset,
-                .cond, .reglist,
-                .sbz, => old.tag,
+                .cond, .reglist, .sbz,
+                .shiftamount, .shift,
+                .rotate, .mask, .cp_num, => old.tag,
                 .flag, => unreachable,
             };
 
