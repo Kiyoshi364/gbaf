@@ -23,9 +23,12 @@ pub fn build(b: *std.build.Builder) void {
     asmgen_step.dependOn(&asmgen_cmd.step);
 
     // Generated files
-    const arm_file_missing =
+    const need_gen_arm_file =
         if ( std.fs.cwd().openFile("src/asm.zig", .{}) catch null )
-            |file| blk: { file.close(); break :blk false; }
+            |file| blk: { defer file.close();
+                break :blk isOlderThanAnyInDir(file, "asm_gen")
+                    catch true;
+            }
         else true;
 
     const exe_asm_tests = b.addTest("src/asm.zig");
@@ -33,7 +36,7 @@ pub fn build(b: *std.build.Builder) void {
     exe_asm_tests.setBuildMode(mode);
 
     const test_asm_step = b.step("test_asm", "Run unit tests");
-    if ( arm_file_missing ) {
+    if ( need_gen_arm_file ) {
         test_asm_step.dependOn(asmgen_step);
     }
     test_asm_step.dependOn(&exe_asm_tests.step);
@@ -50,7 +53,7 @@ pub fn build(b: *std.build.Builder) void {
     }
 
     const run_step = b.step("run", "Run the app");
-    if ( arm_file_missing ) {
+    if ( need_gen_arm_file ) {
         test_asm_step.dependOn(asmgen_step);
     }
     run_step.dependOn(&run_cmd.step);
@@ -60,8 +63,24 @@ pub fn build(b: *std.build.Builder) void {
     exe_tests.setBuildMode(mode);
 
     const test_step = b.step("test", "Run unit tests");
-    if ( arm_file_missing ) {
+    if ( need_gen_arm_file) {
         test_asm_step.dependOn(asmgen_step);
     }
     test_step.dependOn(&exe_tests.step);
+}
+
+fn isOlderThanAnyInDir(file: std.fs.File, comptime dir_path: []const u8) !bool {
+    return if ( file.stat() catch null ) |fstat| blk: {
+        const subdir =
+            try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
+        var iter = subdir.iterate();
+        break :blk while ( try iter.next() ) |entry| {
+            if ( entry.kind == .File ) {
+                const curr_stat = try subdir.statFile(entry.name);
+                if ( fstat.mtime < curr_stat.mtime ) {
+                    break true;
+                }
+            }
+        } else false;
+    } else false;
 }
