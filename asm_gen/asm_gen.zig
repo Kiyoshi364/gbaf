@@ -3,6 +3,7 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
+const decls = @embedFile("asm_decls.zig");
 const tests = @embedFile("asm_tests.zig");
 
 const ArmSpec = &[_]Spec{
@@ -209,7 +210,8 @@ const MetaStruct = struct {
         try std.fmt.format(writer, "}}", .{});
     }
 
-    fn fromSpec(spec: Spec, alloc: Allocator) !MetaStruct {
+    const FromSpec = struct{ mstruct: MetaStruct, size: u8 };
+    fn fromSpec(spec: Spec, alloc: Allocator) !FromSpec {
         const fmt = spec.fmt;
         var buffer = try alloc.alloc(MSField, fmt.len);
         var bsize = @as(usize, 0);
@@ -254,25 +256,38 @@ const MetaStruct = struct {
             }
         }
         const fields = buffer[0..bsize];
+        var total_size = @as(u8, 0);
         {
-            // sanity check
-            var total_size = @as(u8, 0);
             for (fields) |field| {
                 total_size += field.size;
             }
             assert( total_size == 16 or total_size == 32 );
         }
-        return MetaStruct{ .fields = fields, };
+        return FromSpec{
+            .mstruct = MetaStruct{ .fields = fields, },
+            .size = total_size,
+        };
     }
 };
 
-fn fieldsFromSpec(specs: []const Spec, alloc: Allocator) ![]const MUField {
+const FieldsFromSpec = struct {
+    mu_fields: []const MUField,
+    size: u8,
+};
+
+fn fieldsFromSpec(specs: []const Spec, alloc: Allocator) !FieldsFromSpec {
     const mu_fields = try alloc.alloc(MUField, specs.len);
+    var size = @as(?u8, null);
     for (specs) |spec, i| {
-        const mstruct = try MetaStruct.fromSpec(spec, alloc);
-        mu_fields[i] = MUField.init(spec.name, mstruct);
+        const fromSpec = try MetaStruct.fromSpec(spec, alloc);
+        if ( size ) |s| {
+            assert( s == fromSpec.size );
+        } else {
+            size = fromSpec.size;
+        }
+        mu_fields[i] = MUField.init(spec.name, fromSpec.mstruct);
     }
-    return mu_fields;
+    return FieldsFromSpec{ .mu_fields = mu_fields, .size = size.?, };
 }
 
 const MUField = struct {
@@ -298,9 +313,16 @@ const MUField = struct {
 const MetaUnion = struct {
     name: []const u8,
     fields: []const MUField,
+    bitsize: u8,
+    decls: []const u8,
 
-    fn init(name: []const u8, fields: []const MUField) MetaUnion {
-        return .{ .name = name, .fields = fields, };
+    fn init(name: []const u8, ffs: FieldsFromSpec, dcl: []const u8) MetaUnion {
+        return .{
+            .name = name,
+            .fields = ffs.mu_fields,
+            .bitsize = ffs.size,
+            .decls = dcl,
+        };
     }
 
     pub fn format(
@@ -315,9 +337,37 @@ const MetaUnion = struct {
         for (self.fields) |f| {
             try f.print(1, writer);
         }
+        try std.fmt.format(writer, "\n", .{});
+        try print_constants(1, writer, self);
+        try std.fmt.format(writer, "\n", .{});
+        try print_code(1, writer, self.decls);
         try std.fmt.format(writer, "}};\n", .{});
     }
 };
+
+fn print_constants(depth: usize, writer: anytype, mu: MetaUnion) !void {
+    try indent(depth, writer);
+    try std.fmt.format(writer, "const Self = @This();\n", .{});
+    try indent(depth, writer);
+    try std.fmt.format(writer, "const bitsize = {d};\n",
+        .{ mu.bitsize });
+    try indent(depth, writer);
+    try std.fmt.format(writer, "const Bits = u{d};\n",
+        .{ mu.bitsize });
+}
+
+fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
+    var i: usize = 0;
+    while ( i < dcls.len ) {
+        const last = i;
+        while ( i < dcls.len and dcls[i] != '\n') : ( i += 1 ) {}
+        if ( dcls[i] == '\n' ) {
+            i += 1;
+        }
+        try indent(depth, writer);
+        try std.fmt.format(writer, "{s}", .{ dcls[last..i] });
+    }
+}
 
 fn indent(depth: usize, writer: anytype) !void {
     var i = @as(usize, 0);
@@ -336,10 +386,12 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     const thumb =
-        MetaUnion.init("Thumb", try fieldsFromSpec(ThumbSpec, alloc));
+        MetaUnion.init("Thumb",
+            try fieldsFromSpec(ThumbSpec, alloc), decls);
 
     const arm =
-        MetaUnion.init("Arm", try fieldsFromSpec(ArmSpec, alloc));
+        MetaUnion.init("Arm",
+            try fieldsFromSpec(ArmSpec, alloc), decls);
 
     const asmfile = try std.fs.cwd().createFile( "src/asm.zig", .{} );
     defer asmfile.close();
