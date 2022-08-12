@@ -4,6 +4,8 @@ pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
+    var all_tests = std.ArrayList(*std.build.Step).init(b.allocator);
+
     const asmgen_exe = b.addExecutable("asmgen", "asm_gen/asm_gen.zig");
     asmgen_exe.setTarget(target);
     asmgen_exe.setBuildMode(mode);
@@ -27,8 +29,9 @@ pub fn build(b: *std.build.Builder) !void {
     const exe_asm_tests = b.addTest("src/asm.zig");
     exe_asm_tests.setTarget(target);
     exe_asm_tests.setBuildMode(mode);
+    try all_tests.append(&exe_asm_tests.step);
 
-    const test_asm_step = b.step("test_asm", "Run unit tests");
+    const test_asm_step = b.step("test_asm", "Run asm unit tests");
     if ( need_gen_arm_file ) {
         test_asm_step.dependOn(asmgen_step);
     }
@@ -54,12 +57,21 @@ pub fn build(b: *std.build.Builder) !void {
     const exe_tests = b.addTest("src/main.zig");
     exe_tests.setTarget(target);
     exe_tests.setBuildMode(mode);
+    try all_tests.append(&exe_tests.step);
 
-    const test_step = b.step("test", "Run unit tests");
+    const test_exe_step = b.step("test_main", "Run main unit tests");
     if ( need_gen_arm_file) {
         test_asm_step.dependOn(asmgen_step);
     }
-    test_step.dependOn(&exe_tests.step);
+    test_exe_step.dependOn(&exe_tests.step);
+
+    const test_step = b.step("test", "Run all unit tests");
+    if ( need_gen_arm_file) {
+        test_asm_step.dependOn(asmgen_step);
+    }
+    for ( all_tests.items ) |step| {
+        test_step.dependOn(step);
+    }
 }
 
 fn isOlderThanAnyInDir(file: std.fs.File, comptime dir_path: []const u8, b: *std.build.Builder) !bool {
