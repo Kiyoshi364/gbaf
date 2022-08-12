@@ -1,14 +1,7 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
+pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
-
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
     const mode = b.standardReleaseOptions();
 
     const asmgen_exe = b.addExecutable("asmgen", "asm_gen/asm_gen.zig");
@@ -26,8 +19,8 @@ pub fn build(b: *std.build.Builder) void {
     const need_gen_arm_file =
         if ( std.fs.cwd().openFile("src/asm.zig", .{}) catch null )
             |file| blk: { defer file.close();
-                break :blk isOlderThanAnyInDir(file, "asm_gen")
-                    catch true;
+                break :blk
+                    try isOlderThanAnyInDir(file, "asm_gen", b);
             }
         else true;
 
@@ -69,14 +62,15 @@ pub fn build(b: *std.build.Builder) void {
     test_step.dependOn(&exe_tests.step);
 }
 
-fn isOlderThanAnyInDir(file: std.fs.File, comptime dir_path: []const u8) !bool {
+fn isOlderThanAnyInDir(file: std.fs.File, comptime dir_path: []const u8, b: *std.build.Builder) !bool {
     return if ( file.stat() catch null ) |fstat| blk: {
         const subdir =
             try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-        var iter = subdir.iterate();
-        break :blk while ( try iter.next() ) |entry| {
+        var walker = try subdir.walk(b.allocator);
+        defer walker.deinit();
+        break :blk while ( try walker.next() ) |entry| {
             if ( entry.kind == .File ) {
-                const curr_stat = try subdir.statFile(entry.name);
+                const curr_stat = try subdir.statFile(entry.basename);
                 if ( fstat.mtime < curr_stat.mtime ) {
                     break true;
                 }
