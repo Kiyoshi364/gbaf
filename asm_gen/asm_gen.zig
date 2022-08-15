@@ -3,6 +3,7 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
+const header = @embedFile("asm_header.zig");
 const decls = @embedFile("asm_decls.zig");
 const tests = @embedFile("asm_tests.zig");
 
@@ -87,32 +88,40 @@ const MSField = struct {
         };
     }
 
+    fn print_default_value(self: MSField, writer: anytype) !void {
+        if ( @as(MSField.TagEnum, self.tag) == .fixed ) {
+            const fixed = self.tag.fixed;
+            try std.fmt.format(writer, ".{{ .fixed = ", .{});
+            try switch ( self.size ) {
+                1 => writer.print("0b{b:0>1}", .{ fixed }),
+                2 => writer.print("0b{b:0>2}", .{ fixed }),
+                3 => writer.print("0b{b:0>3}", .{ fixed }),
+                4 => writer.print("0b{b:0>4}", .{ fixed }),
+                5 => writer.print("0b{b:0>5}", .{ fixed }),
+                6 => writer.print("0b{b:0>6}", .{ fixed }),
+                7 => writer.print("0b{b:0>7}", .{ fixed }),
+                8 => writer.print("0b{b:0>8}", .{ fixed }),
+                else => @panic("Unhandled size"),
+            };
+            try std.fmt.format(writer, " }}", .{});
+        } else {
+            try std.fmt.format(writer, ".{{ .nil = .{{}} }}", .{});
+        }
+    }
+
     pub fn print(
         self: MSField,
         depth: usize,
         writer: anytype,
     ) !void {
         _ = depth;
+        assert( @as(TagEnum, self.tag) != .fixed );
         if ( self.sufix ) |sufix| {
             try std.fmt.format(writer, "{s}{}: u{}",
                 .{ self.name(), sufix, self.size });
         } else {
             try std.fmt.format(writer, "{s}: u{}",
                 .{ self.name(), self.size });
-        }
-        if ( @as(TagEnum, self.tag) == .fixed ) {
-            const fixed = self.tag.fixed;
-            try switch ( self.size ) {
-                1 => writer.print(" = 0b{b:0>1}", .{ fixed }),
-                2 => writer.print(" = 0b{b:0>2}", .{ fixed }),
-                3 => writer.print(" = 0b{b:0>3}", .{ fixed }),
-                4 => writer.print(" = 0b{b:0>4}", .{ fixed }),
-                5 => writer.print(" = 0b{b:0>5}", .{ fixed }),
-                6 => writer.print(" = 0b{b:0>6}", .{ fixed }),
-                7 => writer.print(" = 0b{b:0>7}", .{ fixed }),
-                8 => writer.print(" = 0b{b:0>8}", .{ fixed }),
-                else => @panic("Unhandled size"),
-            };
         }
     }
 
@@ -161,7 +170,7 @@ const MSField = struct {
 
             assert( new.size == 1 );
             const tag: Tag = switch (old.tag) {
-                .fixed, => |b| .{ .fixed = b << 1 | old.tag.fixed, },
+                .fixed, => |b| .{ .fixed = b << 1 | new.tag.fixed, },
                 .any, .immediate,
                 .opcode1, .opcode,
                 .regm, .regn, .regd, .regs,
@@ -194,6 +203,7 @@ const MSField = struct {
 
 const MetaStruct = struct {
     fields: []const MSField,
+    offsets: []const u8,
 
     pub fn print(
         self: MetaStruct,
@@ -201,7 +211,43 @@ const MetaStruct = struct {
         writer: anytype,
     ) !void {
         try std.fmt.format(writer, "struct {{\n", .{});
+        try indent(depth+1, writer);
+        try std.fmt.format(writer,
+            "const offtable = [{d}]OfftableEntry(Bits){{\n",
+            .{ self.fields.len });
+        for (self.fields) |f, i| {
+            var buffer = [1]u8{ 0 } ** 2;
+            const sufix = blk: {
+                if ( f.sufix ) |s| {
+                    const d0 = s / 10;
+                    const d1 = s % 10;
+                    assert( d0 < 10 );
+                    if ( d0 == 0 ) {
+                        assert( 0 < d1 and d1 < 10 );
+                        buffer[0] = d1 + '0';
+                        break :blk buffer[0..1];
+                    } else {
+                        buffer[0] = d0 + '0';
+                        buffer[1] = d1 + '0';
+                        break :blk buffer[0..2];
+                    }
+                } else {
+                    break :blk buffer[0..0];
+                }
+            };
+            try indent(depth+2, writer);
+            try std.fmt.format(writer,
+                \\.{{ .name = "{s}{s}", .offset = {d},
+                , .{ f.name(), sufix, self.offsets[i], });
+            try std.fmt.format(writer, " .size = {d}, .isFixed = ",
+                .{ f.size });
+            try f.print_default_value(writer);
+            try std.fmt.format(writer, ", }},\n", .{});
+        }
+        try indent(depth+1, writer);
+        try std.fmt.format(writer, "}};\n", .{});
         for (self.fields) |f| {
+            if ( @as(MSField.TagEnum, f.tag) == .fixed ) continue;
             try indent(depth+1, writer);
             try f.print(depth+1, writer);
             try std.fmt.format(writer, ",\n", .{});
@@ -210,7 +256,7 @@ const MetaStruct = struct {
         try std.fmt.format(writer, "}}", .{});
     }
 
-    const FromSpec = struct{ mstruct: MetaStruct, size: u8 };
+    const FromSpec = struct { mstruct: MetaStruct, bsize: u8 };
     fn fromSpec(spec: Spec, alloc: Allocator) !FromSpec {
         const fmt = spec.fmt;
         var buffer = try alloc.alloc(MSField, fmt.len);
@@ -256,38 +302,45 @@ const MetaStruct = struct {
             }
         }
         const fields = buffer[0..bsize];
+        const offsets = try alloc.alloc(u8, bsize);
         var total_size = @as(u8, 0);
         {
-            for (fields) |field| {
+            for (fields) |field, i| {
+                offsets[i] = total_size;
                 total_size += field.size;
             }
             assert( total_size == 16 or total_size == 32 );
         }
         return FromSpec{
-            .mstruct = MetaStruct{ .fields = fields, },
-            .size = total_size,
+            .mstruct = MetaStruct{
+                .fields = fields,
+                .offsets = offsets,
+            },
+            .bsize = total_size,
         };
     }
 };
 
 const FieldsFromSpec = struct {
     mu_fields: []const MUField,
-    size: u8,
+    bsize: u8,
 };
-
 fn fieldsFromSpec(specs: []const Spec, alloc: Allocator) !FieldsFromSpec {
     const mu_fields = try alloc.alloc(MUField, specs.len);
-    var size = @as(?u8, null);
+    var bsize = @as(?u8, null);
     for (specs) |spec, i| {
         const fromSpec = try MetaStruct.fromSpec(spec, alloc);
-        if ( size ) |s| {
-            assert( s == fromSpec.size );
+        if ( bsize ) |bs| {
+            assert( bs == fromSpec.bsize );
         } else {
-            size = fromSpec.size;
+            bsize = fromSpec.bsize;
         }
         mu_fields[i] = MUField.init(spec.name, fromSpec.mstruct);
     }
-    return FieldsFromSpec{ .mu_fields = mu_fields, .size = size.?, };
+    return FieldsFromSpec{
+        .mu_fields = mu_fields,
+        .bsize = bsize.?,
+    };
 }
 
 const MUField = struct {
@@ -316,11 +369,12 @@ const MetaUnion = struct {
     bitsize: u8,
     decls: []const u8,
 
-    fn init(name: []const u8, ffs: FieldsFromSpec, dcl: []const u8) MetaUnion {
-        return .{
+    fn init(name: []const u8, spec: []const Spec, dcl: []const u8, alloc: std.mem.Allocator) !MetaUnion {
+        const ffs = try fieldsFromSpec(spec, alloc);
+        return MetaUnion{
             .name = name,
             .fields = ffs.mu_fields,
-            .bitsize = ffs.size,
+            .bitsize = ffs.bsize,
             .decls = dcl,
         };
     }
@@ -346,14 +400,21 @@ const MetaUnion = struct {
 };
 
 fn print_constants(depth: usize, writer: anytype, mu: MetaUnion) !void {
+    assert( mu.bitsize == 16 or mu.bitsize == 32 );
     try indent(depth, writer);
     try std.fmt.format(writer, "const Self = @This();\n", .{});
+    try indent(depth, writer);
+    try std.fmt.format(writer, "const selfInfo ="
+        ++ " @typeInfo(Self).Union;\n", .{});
     try indent(depth, writer);
     try std.fmt.format(writer, "const bitsize = {d};\n",
         .{ mu.bitsize });
     try indent(depth, writer);
     try std.fmt.format(writer, "const Bits = u{d};\n",
         .{ mu.bitsize });
+    try indent(depth, writer);
+    const rot = if ( mu.bitsize == 16 ) @as(u8, 4) else @as(u8, 8);
+    try std.fmt.format(writer, "const BitRot = u{d};\n", .{ rot });
 }
 
 fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
@@ -386,19 +447,19 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     const thumb =
-        MetaUnion.init("Thumb",
-            try fieldsFromSpec(ThumbSpec, alloc), decls);
+        try MetaUnion.init("Thumb", ThumbSpec, decls, alloc);
 
     const arm =
-        MetaUnion.init("Arm",
-            try fieldsFromSpec(ArmSpec, alloc), decls);
+        try MetaUnion.init("Arm", ArmSpec, decls, alloc);
 
     const asmfile = try std.fs.cwd().createFile( "src/asm.zig", .{} );
     defer asmfile.close();
+    var out = asmfile.writer();
 
-    try asmfile.writer().print("{}\n", .{ thumb });
-    try asmfile.writer().print("{}\n", .{ arm });
-    try asmfile.writer().print("{s}\n", .{ tests });
+    try out.print("{s}\n", .{ header });
+    try out.print("{}\n", .{ thumb });
+    try out.print("{}\n", .{ arm });
+    try out.print("{s}\n", .{ tests });
 }
 
 fn todo() noreturn {
