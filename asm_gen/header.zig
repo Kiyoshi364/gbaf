@@ -66,3 +66,52 @@ test "Arm's OfftableEntry fixed has value, non-fixed don't" {
         }
     }
 }
+
+fn Uint(comptime bits: comptime_int) type {
+    return @Type(.{
+        .Int = .{ .signedness = .unsigned, .bits = bits, }});
+}
+
+fn UintBuilder(comptime target_size: comptime_int, comptime used: ?comptime_int)
+        if (used) |_| type else UintBuilder(target_size, 0) {
+    if ( used ) |used_bits| {
+        assert( 0 < target_size );
+        assert( 0 <= used_bits and used_bits <= target_size );
+        const Target = Uint(target_size);
+        return struct {
+            value: Target,
+
+            fn append(self: @This(), comptime size: comptime_int, bits: Uint(size)) UintBuilder(target_size, used_bits + size) {
+                if ( used_bits + size > target_size ) {
+                    @compileError("More bits than can fit");
+                }
+                const shift = target_size - used_bits - size;
+                const value = self.value | @as(Target, bits) << shift;
+                return UintBuilder(target_size, used_bits + size){
+                    .value = value,
+                };
+            }
+
+            fn finish(self: @This(), comptime size: comptime_int, bits: Uint(size)) Target {
+                if ( used_bits + size != target_size ) {
+                    @compileError("Not enough bits to finish");
+                }
+                return self.append(size, bits).value;
+            }
+        };
+    } else {
+        return .{ .value = 0, };
+    }
+}
+
+test "UintBuilder" {
+    const builder1 = UintBuilder(8, null);
+    const result1 =
+        builder1.append(1, 0b1).append(3, 0b000).finish(4, 0b1010);
+    try testing.expectEqual(@as(u8, 0b1000_1010), result1);
+    const builder2 = UintBuilder(16, null);
+    const result2 =
+        builder2.append(3, 0b001).append(3, 0b101).append(6, 0b001100)
+        .finish(4, 0b1010);
+    try testing.expectEqual(@as(u16, 0b001_101_001100_1010), result2);
+}
