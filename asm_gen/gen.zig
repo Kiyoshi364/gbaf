@@ -3,9 +3,11 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
-const header = @embedFile("asm_header.zig");
-const decls = @embedFile("asm_decls.zig");
-const tests = @embedFile("asm_tests.zig");
+const header = @embedFile("header.zig");
+const decls = @embedFile("decls.zig");
+const tests = @embedFile("tests.zig");
+const arm_code = @embedFile("arm.zig");
+const thumb_code = @embedFile("thumb.zig");
 
 const ArmSpec = &[_]Spec{
 .{ .fmt = "cccc000o oooSnnnn ddddaaaa ahh0mmmm", .name = "DataProcessingImmediateShift", },
@@ -368,14 +370,16 @@ const MetaUnion = struct {
     fields: []const MUField,
     bitsize: u8,
     decls: []const u8,
+    code: []const u8,
 
-    fn init(name: []const u8, spec: []const Spec, dcl: []const u8, alloc: std.mem.Allocator) !MetaUnion {
+    fn init(name: []const u8, spec: []const Spec, dcl: []const u8, code: []const u8, alloc: std.mem.Allocator) !MetaUnion {
         const ffs = try fieldsFromSpec(spec, alloc);
         return MetaUnion{
             .name = name,
             .fields = ffs.mu_fields,
             .bitsize = ffs.bsize,
             .decls = dcl,
+            .code = code,
         };
     }
 
@@ -395,6 +399,8 @@ const MetaUnion = struct {
         try print_constants(1, writer, self);
         try std.fmt.format(writer, "\n", .{});
         try print_code(1, writer, self.decls);
+        try std.fmt.format(writer, "\n", .{});
+        try print_code(1, writer, self.code);
         try std.fmt.format(writer, "}};\n", .{});
     }
 };
@@ -447,10 +453,12 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     const thumb =
-        try MetaUnion.init("Thumb", ThumbSpec, decls, alloc);
+        try MetaUnion.init("Thumb", ThumbSpec, decls,
+            thumb_code, alloc);
 
     const arm =
-        try MetaUnion.init("Arm", ArmSpec, decls, alloc);
+        try MetaUnion.init("Arm", ArmSpec, decls,
+            arm_code, alloc);
 
     const asmfile = try std.fs.cwd().createFile( "src/asm.zig", .{} );
     defer asmfile.close();

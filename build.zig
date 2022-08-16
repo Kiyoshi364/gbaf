@@ -6,7 +6,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     var all_tests = std.ArrayList(*std.build.Step).init(b.allocator);
 
-    const asmgen_exe = b.addExecutable("asmgen", "asm_gen/asm_gen.zig");
+    const asmgen_exe = b.addExecutable("asmgen", "asm_gen/gen.zig");
     asmgen_exe.setTarget(target);
     asmgen_exe.setBuildMode(mode);
     asmgen_exe.install();
@@ -37,7 +37,7 @@ pub fn build(b: *std.build.Builder) !void {
     }
     test_asm_step.dependOn(&exe_asm_tests.step);
 
-    const exe = b.addExecutable("gbh", "src/main.zig");
+    const exe = b.addExecutable("gbaf", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.install();
