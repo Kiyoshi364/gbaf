@@ -49,7 +49,7 @@ const ThumbSpec = &[_]Spec{
 .{ .fmt = "1100Lnnn llllllll", .name = "LoadStoreMultiple", },
 .{ .fmt = "1101cccc ffffffff", .name = "ConditionalBranch", },
 .{ .fmt = "11011110 xxxxxxxx", .name = "UndefinedInstruction", },
-.{ .fmt = "11011111 iiiiiiii", .name = "SoftwateInterrupt", },
+.{ .fmt = "11011111 iiiiiiii", .name = "SoftwareInterrupt", },
 .{ .fmt = "11100fff ffffffff", .name = "UnconditionalBranch", },
 .{ .fmt = "11101fff fffffff0", .name = "BlxSuffix", },
 .{ .fmt = "11101fff fffffff1", .name = "UndefinedInstruction2", },

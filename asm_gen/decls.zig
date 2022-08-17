@@ -1,4 +1,4 @@
-fn read_int(input: Bits) Self {
+pub fn from_int(input: Bits) Self {
     var best_match = @as(?Self, null);
     var best_score = @as(u8, 0);
     inline for (selfInfo.fields) |ufield| {
