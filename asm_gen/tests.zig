@@ -16,7 +16,7 @@ test "Arm dummy instruction" {
 }
 
 test "Thumb instruction from int" {
-    const inst = Thumb.read_int(0b000_01_00100_111_000);
+    const inst = Thumb.from_int(0b000_01_00100_111_000);
     try testing.expectEqual(Thumb{ .ShiftByImmediate = .{
             .opcode1 = 0b01,
             .immediate = 0b00100,
@@ -26,7 +26,7 @@ test "Thumb instruction from int" {
 }
 
 test "Arm instruction from int 1" {
-    const inst = Arm.read_int(0b1010_1110_101_0_1111_0000_0101_1110_1_010);
+    const inst = Arm.from_int(0b1010_1110_101_0_1111_0000_0101_1110_1_010);
     const expected = Arm{ .CoprocessorRegisterTransfers = .{
         .cond = 0b1010, .opcode = 0b101,
         .L = 0b0, .regn = 0b1111, .regd = 0b0000,
@@ -36,7 +36,7 @@ test "Arm instruction from int 1" {
 }
 
 test "Arm instruction from int 2" {
-    const inst = Arm.read_int(0b1010_100_10101_1000_10110111_01001000);
+    const inst = Arm.from_int(0b1010_100_10101_1000_10110111_01001000);
     const expected =
         Arm{ .LoadStoreMultiple = .{
             .cond = 0b1010,
@@ -45,4 +45,16 @@ test "Arm instruction from int 2" {
             .reglist = 0b10110111_01001000,
         }};
     try testing.expectEqual(expected, inst);
+}
+
+test "Thumb instruction from/to int isomorphism" {
+    var input = @as(u16, 0);
+    const inst0 = Thumb.from_int(input);
+    try testing.expectEqual(input, inst0.to_int());
+    input += 1;
+    while ( input != 0 ) : ( input +%= 1 ) {
+        std.debug.print("\ninput: {x}\n", .{ input });
+        const inst = Thumb.from_int(input);
+        try testing.expectEqual(input, inst.to_int());
+    }
 }

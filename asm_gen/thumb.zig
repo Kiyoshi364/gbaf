@@ -1,0 +1,27 @@
+// pub fn toInt(self: Thumb) Bits {
+//     return switch (self) {
+//         .ShiftByImmediate => { @panic("not implemented"); },
+//         .AddSubRegister => { @panic("not implemented"); },
+//         .AddSubImmediate => { @panic("not implemented"); },
+//         .AddSubCmpMovImmediate => { @panic("not implemented"); },
+//         .DataProcessingRegister => { @panic("not implemented"); },
+//         .SpecialDataProcessing => { @panic("not implemented"); },
+//         .BranchExchange => { @panic("not implemented"); },
+//         .LoadFromLiteralPool => { @panic("not implemented"); },
+//         .LoadStoreRegisterOffset => { @panic("not implemented"); },
+//         .LoadStoreWordByteImmediateOffset => { @panic("not implemented"); },
+//         .LoadStoreHalfwordImmediateOffset => { @panic("not implemented"); },
+//         .LoadStoreFromToStack => { @panic("not implemented"); },
+//         .AddToSpOrPc => { @panic("not implemented"); },
+//         .Miscellaneous => { @panic("not implemented"); },
+//         .LoadStoreMultiple => { @panic("not implemented"); },
+//         .ConditionalBranch => { @panic("not implemented"); },
+//         .UndefinedInstruction => { @panic("not implemented"); },
+//         .SoftwareInterrupt => { @panic("not implemented"); },
+//         .UnconditionalBranch => { @panic("not implemented"); },
+//         .BlxSuffix => { @panic("not implemented"); },
+//         .UndefinedInstruction2 => { @panic("not implemented"); },
+//         .BlBlxPrefix => { @panic("not implemented"); },
+//         .BlSuffix => { @panic("not implemented"); },
+//     };
+// }

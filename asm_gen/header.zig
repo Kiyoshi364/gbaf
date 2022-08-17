@@ -4,16 +4,15 @@ const testing = std.testing;
 
 fn OfftableEntry(comptime Bsize: type) type {
     assert( Bsize == u16 or Bsize == u32 );
-    const Urot = if ( Bsize == u16 ) u4 else u8;
     return struct {
         name: []const u8,
-        offset: u8,
-        size: Urot,
+        offset: comptime_int,
+        size: comptime_int,
         isFixed: Tag,
         const Enum = @typeInfo(Tag).Union.tag_type.?;
         const Tag = union(enum){
             nil,
-            fixed: Bsize,
+            fixed: comptime_int,
         };
     };
 }
@@ -36,7 +35,7 @@ test "Thumb's OfftableEntry fixed has value, non-fixed don't" {
     inline for (thumbFields) |ufield| {
         const UField = ufield.field_type;
         assert( @hasDecl(UField, "offtable") );
-        for ( @field(UField, "offtable") ) |entry| {
+        inline for ( @field(UField, "offtable") ) |entry| {
             const Enum = @TypeOf(entry).Enum;
             if ( hasPrefix(entry.name, "fixed") ) {
                 try testing.expectEqual(
@@ -54,7 +53,7 @@ test "Arm's OfftableEntry fixed has value, non-fixed don't" {
     inline for (armFields) |ufield| {
         const UField = ufield.field_type;
         assert( @hasDecl(UField, "offtable") );
-        for ( @field(UField, "offtable") ) |entry| {
+        inline for ( @field(UField, "offtable") ) |entry| {
             const Enum = @TypeOf(entry).Enum;
             if ( hasPrefix(entry.name, "fixed") ) {
                 try testing.expectEqual(
@@ -72,46 +71,69 @@ fn Uint(comptime bits: comptime_int) type {
         .Int = .{ .signedness = .unsigned, .bits = bits, }});
 }
 
-fn UintBuilder(comptime target_size: comptime_int, comptime used: ?comptime_int)
-        if (used) |_| type else UintBuilder(target_size, 0) {
-    if ( used ) |used_bits| {
-        assert( 0 < target_size );
-        assert( 0 <= used_bits and used_bits <= target_size );
-        const Target = Uint(target_size);
-        return struct {
-            value: Target,
+fn UintBuilder(comptime target_size: comptime_int) type {
+    assert( 0 < target_size );
+    const Target = Uint(target_size);
+    const Urot = switch (target_size) {
+        8 => u3,
+        16 => u4,
+        32 => u5,
+        else => @compileError("unhandled size"),
+    };
+    return struct {
+        value: Target = 0,
+        used_bits: Urot = 0,
+        is_done: bool = false,
 
-            fn append(self: @This(), comptime size: comptime_int, bits: Uint(size)) UintBuilder(target_size, used_bits + size) {
-                if ( used_bits + size > target_size ) {
-                    @compileError("More bits than can fit");
-                }
-                const shift = target_size - used_bits - size;
-                const value = self.value | @as(Target, bits) << shift;
-                return UintBuilder(target_size, used_bits + size){
-                    .value = value,
-                };
-            }
+        fn append(self: @This(), comptime size: Urot, bits: Uint(size)) UintBuilder(target_size) {
+            const used = @as(Target, self.used_bits) + size;
+            assert( size > 0 );
+            assert( used <= target_size );
+            const shift = @as(Urot,
+                    target_size - 1 - size + 1 - self.used_bits);
+            const value = self.value | @as(Target, bits) << shift;
+            return UintBuilder(target_size){
+                .value = value,
+                .used_bits = self.used_bits +% size,
+                .is_done = used == target_size,
+            };
+        }
 
-            fn finish(self: @This(), comptime size: comptime_int, bits: Uint(size)) Target {
-                if ( used_bits + size != target_size ) {
-                    @compileError("Not enough bits to finish");
-                }
-                return self.append(size, bits).value;
-            }
-        };
-    } else {
-        return .{ .value = 0, };
-    }
+        fn finish(self: @This(), comptime size: comptime_int, bits: Uint(size)) Target {
+            const used = @as(Target, self.used_bits) + size;
+            assert( used == target_size );
+            return self.append(size, bits).value;
+        }
+
+        fn done(self: @This()) Target {
+            assert ( self.is_done );
+            return self.value;
+        }
+    };
 }
 
 test "UintBuilder" {
-    const builder1 = UintBuilder(8, null);
+    const builder1 = UintBuilder(8){};
     const result1 =
-        builder1.append(1, 0b1).append(3, 0b000).finish(4, 0b1010);
-    try testing.expectEqual(@as(u8, 0b1000_1010), result1);
-    const builder2 = UintBuilder(16, null);
+        builder1.append(1, 0b1).append(3, 0b000).append(4, 0b1010);
+    try testing.expectEqual(@as(u8, 0b1000_1010), result1.done());
+    const builder2 = UintBuilder(16){};
     const result2 =
         builder2.append(3, 0b001).append(3, 0b101).append(6, 0b001100)
         .finish(4, 0b1010);
     try testing.expectEqual(@as(u16, 0b001_101_001100_1010), result2);
+}
+
+fn strEq(str1: []const u8, str2: []const u8) bool {
+    return if ( str1.len == str2.len )
+        for (str1) |c, i| {
+            if ( c != str2[i] ) break false;
+        } else true
+    else false;
+}
+
+test "strEq" {
+    try testing.expect(strEq("asdf", "asdf"));
+    try testing.expect(!strEq("asd", "asdf"));
+    try testing.expect(!strEq("asdh", "asdf"));
 }
