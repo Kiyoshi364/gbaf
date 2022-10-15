@@ -437,7 +437,7 @@ fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
         if ( dcls[i] == '\n' ) {
             i += 1;
         }
-        try indent(depth, writer);
+        if ( i - last > 1 ) try indent(depth, writer);
         try std.fmt.format(writer, "{s}", .{ dcls[last..i] });
     }
 }
