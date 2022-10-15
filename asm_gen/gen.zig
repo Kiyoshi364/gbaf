@@ -3,11 +3,9 @@ const assert = std.debug.assert;
 const Type = std.builtin.Type;
 const Allocator = std.mem.Allocator;
 
+const meta = @import("meta.zig");
 const header = @embedFile("header.zig");
-const decls = @embedFile("decls.zig");
 const tests = @embedFile("tests.zig");
-const arm_code = @embedFile("arm.zig");
-const thumb_code = @embedFile("thumb.zig");
 
 const ver = std.SemanticVersion.parse("0.10.0-dev.2489") catch unreachable;
 const curr_ver = @import("builtin").zig_version;
@@ -81,7 +79,7 @@ const MSField = struct {
 
     const TagEnum = @typeInfo(Tag).Union.tag_type.?;
 
-    fn name(self: *const MSField) []const u8 {
+    pub fn name(self: *const MSField) []const u8 {
         return switch (self.tag) {
             .fixed, .any, .immediate,
             .opcode1, .opcode,
@@ -96,25 +94,52 @@ const MSField = struct {
 
     fn print_default_value(self: MSField, writer: anytype) !void {
         if ( @as(MSField.TagEnum, self.tag) == .fixed ) {
-            const fixed = self.tag.fixed;
             try std.fmt.format(writer, ".{{ .fixed = ", .{});
-            try switch ( self.size ) {
-                1 => writer.print("0b{b:0>1}", .{ fixed }),
-                2 => writer.print("0b{b:0>2}", .{ fixed }),
-                3 => writer.print("0b{b:0>3}", .{ fixed }),
-                4 => writer.print("0b{b:0>4}", .{ fixed }),
-                5 => writer.print("0b{b:0>5}", .{ fixed }),
-                6 => writer.print("0b{b:0>6}", .{ fixed }),
-                7 => writer.print("0b{b:0>7}", .{ fixed }),
-                8 => writer.print("0b{b:0>8}", .{ fixed }),
-                else => @panic("Unhandled size"),
-            };
+            try self.toFixedString(writer);
             try std.fmt.format(writer, " }}", .{});
         } else {
             try std.fmt.format(writer,
                  if (is_new_ver) ".{{ .nil = {{}} }}"
                  else ".{{ .nil = .{{}} }}", .{});
         }
+    }
+
+    pub fn toFixedString(self: MSField, writer: anytype) !void {
+        const fixed = self.tag.fixed;
+        try switch ( self.size ) {
+            1 => writer.print("0b{b:0>1}", .{ fixed }),
+            2 => writer.print("0b{b:0>2}", .{ fixed }),
+            3 => writer.print("0b{b:0>3}", .{ fixed }),
+            4 => writer.print("0b{b:0>4}", .{ fixed }),
+            5 => writer.print("0b{b:0>5}", .{ fixed }),
+            6 => writer.print("0b{b:0>6}", .{ fixed }),
+            7 => writer.print("0b{b:0>7}", .{ fixed }),
+            8 => writer.print("0b{b:0>8}", .{ fixed }),
+            else => @panic("Unhandled size"),
+        };
+    }
+
+    pub fn print_name(self: MSField, writer: anytype) !void {
+        var buffer = [1]u8{ 0 } ** 2;
+        const sufix = blk: {
+            if ( self.sufix ) |s| {
+                const d0 = s / 10;
+                const d1 = s % 10;
+                assert( d0 < 10 );
+                if ( d0 == 0 ) {
+                    assert( 0 < d1 and d1 < 10 );
+                    buffer[0] = d1 + '0';
+                    break :blk buffer[0..1];
+                } else {
+                    buffer[0] = d0 + '0';
+                    buffer[1] = d1 + '0';
+                    break :blk buffer[0..2];
+                }
+            } else {
+                break :blk buffer[0..0];
+            }
+        };
+        try std.fmt.format(writer, "{s}{s}", .{ self.name(), sufix });
     }
 
     pub fn print(
@@ -219,38 +244,6 @@ const MetaStruct = struct {
         writer: anytype,
     ) !void {
         try std.fmt.format(writer, "struct {{\n", .{});
-        try indent_print(depth+1, writer,
-            "const offtable = [{d}]OfftableEntry(Bits){{\n",
-            .{ self.fields.len });
-        for (self.fields) |f, i| {
-            var buffer = [1]u8{ 0 } ** 2;
-            const sufix = blk: {
-                if ( f.sufix ) |s| {
-                    const d0 = s / 10;
-                    const d1 = s % 10;
-                    assert( d0 < 10 );
-                    if ( d0 == 0 ) {
-                        assert( 0 < d1 and d1 < 10 );
-                        buffer[0] = d1 + '0';
-                        break :blk buffer[0..1];
-                    } else {
-                        buffer[0] = d0 + '0';
-                        buffer[1] = d1 + '0';
-                        break :blk buffer[0..2];
-                    }
-                } else {
-                    break :blk buffer[0..0];
-                }
-            };
-            try indent_print(depth+2, writer,
-                \\.{{ .name = "{s}{s}", .offset = {d},
-                , .{ f.name(), sufix, self.offsets[i], });
-            try std.fmt.format(writer, " .size = {d}, .isFixed = ",
-                .{ f.size });
-            try f.print_default_value(writer);
-            try std.fmt.format(writer, ", }},\n", .{});
-        }
-        try indent_print(depth+1, writer, "}};\n", .{});
         for (self.fields) |f| {
             if ( @as(MSField.TagEnum, f.tag) == .fixed ) continue;
             try indent(depth+1, writer);
@@ -355,32 +348,27 @@ const MUField = struct {
         return .{ .name = name, .mstruct = mstruct, };
     }
 
-    pub fn print(
+    pub fn print_decl(
         self: MUField,
         depth: usize,
         writer: anytype,
     ) !void {
-        try indent_print(depth, writer, "{s}: ", .{ self.name });
         try self.mstruct.print(depth, writer);
-        try std.fmt.format(writer, ",\n", .{});
+        try std.fmt.format(writer, ";\n", .{});
     }
 };
 
-const MetaUnion = struct {
+pub const MetaUnion = struct {
     name: []const u8,
     fields: []const MUField,
     bitsize: u8,
-    decls: []const u8,
-    code: []const u8,
 
-    fn init(name: []const u8, spec: []const Spec, dcl: []const u8, code: []const u8, alloc: std.mem.Allocator) !MetaUnion {
+    fn init(name: []const u8, spec: []const Spec, alloc: std.mem.Allocator) !MetaUnion {
         const ffs = try fieldsFromSpec(spec, alloc);
         return MetaUnion{
             .name = name,
             .fields = ffs.mu_fields,
             .bitsize = ffs.bsize,
-            .decls = dcl,
-            .code = code,
         };
     }
 
@@ -394,14 +382,20 @@ const MetaUnion = struct {
         try std.fmt.format(writer, "pub const {s} = union(enum) {{\n",
             .{ self.name });
         for (self.fields) |f| {
-            try f.print(1, writer);
+            try indent(1, writer);
+            try std.fmt.format(writer, "{s}: {s},\n",
+                .{ f.name, f.name });
+        }
+        for (self.fields) |f| {
+            try indent_print(1, writer, "const {s} = ", .{ f.name });
+            try f.print_decl(1, writer);
         }
         try std.fmt.format(writer, "\n", .{});
-        try print_constants(1, writer, self);
+
+        try meta.from_int(1, writer, self);
         try std.fmt.format(writer, "\n", .{});
-        try print_code(1, writer, self.decls);
-        try std.fmt.format(writer, "\n", .{});
-        try print_code(1, writer, self.code);
+        try meta.to_int(1, writer, self);
+
         try std.fmt.format(writer, "}};\n", .{});
     }
 };
@@ -419,7 +413,7 @@ fn print_constants(depth: usize, writer: anytype, mu: MetaUnion) !void {
     try indent_print(depth, writer, "const BitRot = u{d};\n", .{ rot });
 }
 
-fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
+pub fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
     var i: usize = 0;
     while ( i < dcls.len ) {
         const last = i;
@@ -432,14 +426,14 @@ fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
     }
 }
 
-fn indent(depth: usize, writer: anytype) !void {
+pub fn indent(depth: usize, writer: anytype) !void {
     var i = @as(usize, 0);
     while ( i < depth ) : ( i += 1 ) {
         try writer.print("    ", .{});
     }
 }
 
-fn indent_print(
+pub fn indent_print(
         depth: usize, writer: anytype,
         comptime fmt: []const u8, args: anytype) !void {
     try indent(depth, writer);
@@ -455,13 +449,9 @@ pub fn main() !void {
 
     const alloc = arena.allocator();
 
-    const thumb =
-        try MetaUnion.init("Thumb", ThumbSpec, decls,
-            thumb_code, alloc);
+    const thumb = try MetaUnion.init("Thumb", ThumbSpec, alloc);
 
-    const arm =
-        try MetaUnion.init("Arm", ArmSpec, decls,
-            arm_code, alloc);
+    const arm = try MetaUnion.init("Arm", ArmSpec, alloc);
 
     const asmfile = try std.fs.cwd().createFile( "src/asm.zig", .{} );
     defer asmfile.close();

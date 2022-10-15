@@ -53,8 +53,18 @@ test "Thumb instruction from/to int isomorphism" {
     try testing.expectEqual(input, inst0.to_int());
     input += 1;
     while ( input != 0 ) : ( input +%= 1 ) {
-        std.debug.print("\ninput: {x}\n", .{ input });
         const inst = Thumb.from_int(input);
+        try testing.expectEqual(input, inst.to_int());
+    }
+}
+
+test "Arm instruction from/to int isomorphism (up to 0x10_0000)" {
+    var input = @as(u32, 0);
+    const inst0 = Arm.from_int(input);
+    try testing.expectEqual(input, inst0.to_int());
+    input += 1;
+    while ( input < 0x10_0000 ) : ( input += 1 ) {
+        const inst = Arm.from_int(input);
         try testing.expectEqual(input, inst.to_int());
     }
 }
