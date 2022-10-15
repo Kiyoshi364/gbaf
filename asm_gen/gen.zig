@@ -9,6 +9,10 @@ const tests = @embedFile("tests.zig");
 const arm_code = @embedFile("arm.zig");
 const thumb_code = @embedFile("thumb.zig");
 
+const ver = std.SemanticVersion.parse("0.10.0-dev.2489") catch unreachable;
+const curr_ver = @import("builtin").zig_version;
+const is_new_ver = curr_ver.order(ver) == .gt;
+
 const ArmSpec = &[_]Spec{
 .{ .fmt = "cccc000o oooSnnnn ddddaaaa ahh0mmmm", .name = "DataProcessingImmediateShift", },
 .{ .fmt = "cccc0001 0xx0xxxx xxxxxxxx xxx0xxxx", .name = "MiscellaneousInstructions", },
@@ -77,7 +81,7 @@ const MSField = struct {
 
     const TagEnum = @typeInfo(Tag).Union.tag_type.?;
 
-    fn name(self: MSField) []const u8 {
+    fn name(self: *const MSField) []const u8 {
         return switch (self.tag) {
             .fixed, .any, .immediate,
             .opcode1, .opcode,
@@ -86,7 +90,7 @@ const MSField = struct {
             .cond, .reglist, .sbz,
             .shiftamount, .shift,
             .rotate, .mask, .cp_num => @tagName(self.tag),
-            .flag => |flag| &flag.name,
+            .flag => |*flag| &flag.name,
         };
     }
 
@@ -107,7 +111,9 @@ const MSField = struct {
             };
             try std.fmt.format(writer, " }}", .{});
         } else {
-            try std.fmt.format(writer, ".{{ .nil = .{{}} }}", .{});
+            try std.fmt.format(writer,
+                 if (is_new_ver) ".{{ .nil = {{}} }}"
+                 else ".{{ .nil = .{{}} }}", .{});
         }
     }
 
@@ -476,6 +482,7 @@ fn todo() noreturn {
 
 fn sliceEq(comptime T: type, a: []const T, b: []const T) bool {
     return if ( a.len != b.len ) false
+        else if ( a.ptr == b.ptr ) true
         else for (a) |_, i| {
             if ( a[i] != b[i] ) break false;
         } else true;

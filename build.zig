@@ -75,18 +75,39 @@ pub fn build(b: *std.build.Builder) !void {
 }
 
 fn isOlderThanAnyInDir(file: std.fs.File, comptime dir_path: []const u8, b: *std.build.Builder) !bool {
-    return if ( file.stat() catch null ) |fstat| blk: {
-        const subdir =
-            try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-        var walker = try subdir.walk(b.allocator);
-        defer walker.deinit();
-        break :blk while ( try walker.next() ) |entry| {
-            if ( entry.kind == .File ) {
-                const curr_stat = try subdir.statFile(entry.basename);
-                if ( fstat.mtime < curr_stat.mtime ) {
-                    break true;
+    const ver = comptime try std.SemanticVersion.parse("0.10.0-dev.2489");
+    const curr_ver = @import("builtin").zig_version;
+    const is_new_ver = comptime curr_ver.order(ver) == .gt;
+    if ( is_new_ver ) {
+        return if ( file.stat() catch null ) |fstat| blk: {
+            const itsubdir =
+                try std.fs.cwd().openIterableDir(dir_path, .{});
+            var walker = try itsubdir.walk(b.allocator);
+            defer walker.deinit();
+            break :blk while ( try walker.next() ) |entry| {
+                if ( entry.kind == .File ) {
+                    const curr_stat =
+                            try itsubdir.dir.statFile(entry.basename);
+                    if ( fstat.mtime < curr_stat.mtime ) {
+                        break true;
+                    }
                 }
-            }
+            } else false;
         } else false;
-    } else false;
+    } else {
+        return if ( file.stat() catch null ) |fstat| blk: {
+            const subdir =
+                try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
+            var walker = try subdir.walk(b.allocator);
+            defer walker.deinit();
+            break :blk while ( try walker.next() ) |entry| {
+                if ( entry.kind == .File ) {
+                    const curr_stat = try subdir.statFile(entry.basename);
+                    if ( fstat.mtime < curr_stat.mtime ) {
+                        break true;
+                    }
+                }
+            } else false;
+        } else false;
+    }
 }
