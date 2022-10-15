@@ -219,8 +219,7 @@ const MetaStruct = struct {
         writer: anytype,
     ) !void {
         try std.fmt.format(writer, "struct {{\n", .{});
-        try indent(depth+1, writer);
-        try std.fmt.format(writer,
+        try indent_print(depth+1, writer,
             "const offtable = [{d}]OfftableEntry(Bits){{\n",
             .{ self.fields.len });
         for (self.fields) |f, i| {
@@ -243,8 +242,7 @@ const MetaStruct = struct {
                     break :blk buffer[0..0];
                 }
             };
-            try indent(depth+2, writer);
-            try std.fmt.format(writer,
+            try indent_print(depth+2, writer,
                 \\.{{ .name = "{s}{s}", .offset = {d},
                 , .{ f.name(), sufix, self.offsets[i], });
             try std.fmt.format(writer, " .size = {d}, .isFixed = ",
@@ -252,16 +250,14 @@ const MetaStruct = struct {
             try f.print_default_value(writer);
             try std.fmt.format(writer, ", }},\n", .{});
         }
-        try indent(depth+1, writer);
-        try std.fmt.format(writer, "}};\n", .{});
+        try indent_print(depth+1, writer, "}};\n", .{});
         for (self.fields) |f| {
             if ( @as(MSField.TagEnum, f.tag) == .fixed ) continue;
             try indent(depth+1, writer);
             try f.print(depth+1, writer);
             try std.fmt.format(writer, ",\n", .{});
         }
-        try indent(depth, writer);
-        try std.fmt.format(writer, "}}", .{});
+        try indent_print(depth, writer, "}}", .{});
     }
 
     const FromSpec = struct { mstruct: MetaStruct, bsize: u8 };
@@ -364,8 +360,7 @@ const MUField = struct {
         depth: usize,
         writer: anytype,
     ) !void {
-        try indent(depth, writer);
-        try std.fmt.format(writer, "{s}: ", .{ self.name });
+        try indent_print(depth, writer, "{s}: ", .{ self.name });
         try self.mstruct.print(depth, writer);
         try std.fmt.format(writer, ",\n", .{});
     }
@@ -413,20 +408,15 @@ const MetaUnion = struct {
 
 fn print_constants(depth: usize, writer: anytype, mu: MetaUnion) !void {
     assert( mu.bitsize == 16 or mu.bitsize == 32 );
-    try indent(depth, writer);
-    try std.fmt.format(writer, "const Self = @This();\n", .{});
-    try indent(depth, writer);
-    try std.fmt.format(writer, "const selfInfo ="
+    try indent_print(depth, writer, "const Self = @This();\n", .{});
+    try indent_print(depth, writer, "const selfInfo ="
         ++ " @typeInfo(Self).Union;\n", .{});
-    try indent(depth, writer);
-    try std.fmt.format(writer, "const bitsize = {d};\n",
+    try indent_print(depth, writer, "const bitsize = {d};\n",
         .{ mu.bitsize });
-    try indent(depth, writer);
-    try std.fmt.format(writer, "const Bits = u{d};\n",
+    try indent_print(depth, writer, "const Bits = u{d};\n",
         .{ mu.bitsize });
-    try indent(depth, writer);
     const rot = if ( mu.bitsize == 16 ) @as(u8, 4) else @as(u8, 8);
-    try std.fmt.format(writer, "const BitRot = u{d};\n", .{ rot });
+    try indent_print(depth, writer, "const BitRot = u{d};\n", .{ rot });
 }
 
 fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
@@ -447,6 +437,13 @@ fn indent(depth: usize, writer: anytype) !void {
     while ( i < depth ) : ( i += 1 ) {
         try writer.print("    ", .{});
     }
+}
+
+fn indent_print(
+        depth: usize, writer: anytype,
+        comptime fmt: []const u8, args: anytype) !void {
+    try indent(depth, writer);
+    try std.fmt.format(writer, fmt, args);
 }
 
 pub fn main() !void {
