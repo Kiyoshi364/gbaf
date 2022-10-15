@@ -16,7 +16,7 @@ const is_new_ver = curr_ver.order(ver) == .gt;
 const ArmSpec = &[_]Spec{
 .{ .fmt = "cccc000o oooSnnnn ddddaaaa ahh0mmmm", .name = "DataProcessingImmediateShift", },
 .{ .fmt = "cccc0001 0xx0xxxx xxxxxxxx xxx0xxxx", .name = "MiscellaneousInstructions", },
-.{ .fmt = "cccc000o oooSnnnn ddddssss 0hhhmmmm", .name = "DataProcessingRegisterShift", },
+.{ .fmt = "cccc000o oooSnnnn ddddssss 0hh1mmmm", .name = "DataProcessingRegisterShift", },
 .{ .fmt = "cccc0001 0xx0xxxx xxxxxxxx 0xx1xxxx", .name = "MiscellaneousInstructions2", },
 .{ .fmt = "cccc000x xxxxxxxx xxxxxxxx 1xx1xxxx", .name = "MultipliesExtraLoadStores", },
 .{ .fmt = "cccc001o oooSnnnn ddddtttt iiiiiiii", .name = "DataProcessingImmediate", },
