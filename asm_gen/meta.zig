@@ -6,6 +6,10 @@ const print_code = gen.print_code;
 const indent = gen.indent;
 const indent_print = gen.indent_print;
 
+pub const funcs = [_][]const u8 {
+    "from_int", "to_int", "debug_print",
+};
+
 pub fn from_int(depth: usize, writer: anytype, mu: MetaUnion) !void {
     try indent_print(depth, writer,
         "pub fn from_int(input: u{d}) {s} {{\n",
@@ -105,6 +109,47 @@ pub fn to_int(depth: usize, writer: anytype, mu: MetaUnion) !void {
     }
     try print_code(depth, writer,
         \\    };
+        \\}
+        \\
+        );
+}
+
+pub fn debug_print(depth: usize, writer: anytype, mu: MetaUnion) !void {
+    try indent_print(depth, writer,
+        "pub fn debug_print(self: {s}, writer: anytype) !void {{\n",
+        .{ mu.name });
+    try print_code(depth+1, writer,
+        "switch (self) {\n");
+    for (mu.fields) |muf| {
+        try indent_print(depth+2, writer, ".{s} => |val| {{\n",
+            .{ muf.name });
+        try indent_print(depth+3, writer,
+            \\try std.fmt.format(writer, "{s}", .{{}});
+            \\
+            , .{ muf.name });
+        for (muf.mstruct.fields) |msf| {
+            if ( msf.tag == .fixed ) {
+                // noop
+            } else {
+                try indent_print(depth+3, writer,
+                    \\try std.fmt.format(writer, " 
+                    , .{});
+                try msf.print_name(writer);
+                try std.fmt.format(writer,
+                    \\=0b{{b:0>{d}}}", .{{ val.
+                    , .{ msf.size });
+                try msf.print_name(writer);
+                try std.fmt.format(writer, " }});\n", .{});
+            }
+        }
+        try print_code(depth+2, writer,
+            \\},
+            \\
+            );
+    }
+    try print_code(depth, writer,
+        \\    }
+        \\    try std.fmt.format(writer, "\n", .{});
         \\}
         \\
         );

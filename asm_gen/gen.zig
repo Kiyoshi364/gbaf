@@ -392,26 +392,16 @@ pub const MetaUnion = struct {
         }
         try std.fmt.format(writer, "\n", .{});
 
-        try meta.from_int(1, writer, self);
-        try std.fmt.format(writer, "\n", .{});
-        try meta.to_int(1, writer, self);
+        inline for (meta.funcs) |func_name, i| {
+            try @field(meta, func_name)( 1, writer, self );
+            if ( i + 1 < meta.funcs.len ) {
+                try std.fmt.format(writer, "\n", .{});
+            }
+        }
 
         try std.fmt.format(writer, "}};\n", .{});
     }
 };
-
-fn print_constants(depth: usize, writer: anytype, mu: MetaUnion) !void {
-    assert( mu.bitsize == 16 or mu.bitsize == 32 );
-    try indent_print(depth, writer, "const Self = @This();\n", .{});
-    try indent_print(depth, writer, "const selfInfo ="
-        ++ " @typeInfo(Self).Union;\n", .{});
-    try indent_print(depth, writer, "const bitsize = {d};\n",
-        .{ mu.bitsize });
-    try indent_print(depth, writer, "const Bits = u{d};\n",
-        .{ mu.bitsize });
-    const rot = if ( mu.bitsize == 16 ) @as(u8, 4) else @as(u8, 8);
-    try indent_print(depth, writer, "const BitRot = u{d};\n", .{ rot });
-}
 
 pub fn print_code(depth: usize, writer: anytype, dcls: []const u8) !void {
     var i: usize = 0;

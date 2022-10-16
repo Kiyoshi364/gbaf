@@ -68,3 +68,51 @@ test "Arm instruction from/to int isomorphism (up to 0x10_0000)" {
         try testing.expectEqual(input, inst.to_int());
     }
 }
+
+test "Thumb debug_print" {
+    const inst = Thumb{ .ShiftByImmediate = .{
+        .opcode1 = 0b01,
+        .immediate = 0b00100,
+        .regm = 0b111,
+        .regd = 0b000,
+    }};
+    var buffer: [0x80]u8 = .{ 0 } ** 0x80;
+    var contex = .{ .buf = &buffer };
+    var writer = BufferWriter{ .context = &contex };
+    try inst.debug_print(writer);
+    const wrote = buffer[0..writer.context.index];
+    try testing.expectEqualSlices(u8,
+        "ShiftByImmediate opcode1=0b01 immediate=0b00100 regm=0b111 regd=0b000\n",
+        wrote);
+}
+
+test "Arm debug_print" {
+    const inst = Arm{ .LoadStoreMultiple = .{
+        .cond = 0b1010,
+        .P = 0b1, .U = 0b0, .S = 0b1, .W = 0b0, .L = 0b1,
+        .regn = 0b1000,
+        .reglist = 0b10110111_01001000,
+    }};
+    var buffer: [0x80]u8 = .{ 0 } ** 0x80;
+    var contex = .{ .buf = &buffer };
+    var writer = BufferWriter{ .context = &contex };
+    try inst.debug_print(writer);
+    const wrote = buffer[0..writer.context.index];
+    try testing.expectEqualSlices(u8,
+        "LoadStoreMultiple cond=0b1010 P=0b1 U=0b0 S=0b1 W=0b0 L=0b1 regn=0b1000 reglist=0b1011011101001000\n",
+        wrote);
+}
+
+const Ctx = struct { buf: []u8, index: usize = 0 };
+const Err = error{ BufferOverflow };
+fn bufWrite(ctx: *Ctx, bytes: []const u8) Err!usize {
+    if ( ctx.index + bytes.len > ctx.buf.len ) {
+        return Err.BufferOverflow;
+    }
+    for (bytes) |c, i| {
+        ctx.buf[ctx.index + i] = c;
+    }
+    ctx.*.index += bytes.len;
+    return bytes.len;
+}
+const BufferWriter = std.io.Writer(*Ctx, Err, bufWrite);
