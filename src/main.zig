@@ -13,7 +13,6 @@ pub fn main() anyerror!void {
     defer alloc.free(buffer);
 
     const isArm = true;
-    const isBigEndian = true;
 
     var read = @as(usize, 1);
     var flip: if (isArm) u2 else u1 = 0;
@@ -23,9 +22,7 @@ pub fn main() anyerror!void {
         read = try stdin.read(buffer);
         for (buffer[0..read]) |c| {
             const Int = if (isArm) u5 else u4;
-            const shiftBig    = 8 * @as(Int, flipMax - flip);
-            const shiftLittle = 8 * @as(Int, flip);
-            const shift = if (isBigEndian) shiftBig else shiftLittle;
+            const shift = 8 * @as(Int, flip);
             acc |= @as(@TypeOf(acc), c) << shift;
 
             flip +%= 1;
