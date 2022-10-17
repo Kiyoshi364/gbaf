@@ -30,7 +30,6 @@ pub fn main() anyerror!void {
 
             flip +%= 1;
             if ( flip == 0 ) {
-                acc |= c;
                 if (isArm) {
                     try std.fmt.format(stdout,
                         "0x{X:0>8}: ", .{ acc });
