@@ -16,7 +16,6 @@ pub fn main() anyerror!void {
 
     var read = @as(usize, 1);
     var flip: if (isArm) u2 else u1 = 0;
-    const flipMax = @as(@TypeOf(flip), 0) -% 1;
     var acc: if (isArm) u32 else u16 = 0;
     while ( read > 0 ) {
         read = try stdin.read(buffer);
